@@ -123,7 +123,7 @@ class AlkotekaSpider(scrapy.Spider):
         loader.add_value('url', product_url)
         loader.add_value(
             'title',
-            f'{str(item.get('name'))},{str(item.get('filter_labels')[0]['title'])}'
+            f"{str(item.get('name'))},{str(item.get('filter_labels')[0]['title'])}"
         )
 
 
