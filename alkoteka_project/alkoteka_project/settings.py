@@ -5,15 +5,10 @@ NEWSPIDER_MODULE = "alkoteka_project.spiders"
 
 ADDONS = {}
 
-# # Путь к файлу с прокси
-# PROXY_FILE = 'proxies.txt'
 # Пути к файлам данных
 URL_LIST_FILE = 'url_categories.txt'
 PROXY_LIST_FILE = 'proxies.txt'
 
-# DOWNLOADER_MIDDLEWARES = {
-#     'alkoteka_project.middlewares.AlkotekaProjectSpiderMiddleware': 100,
-# }
 DOWNLOADER_MIDDLEWARES = {
     'alkoteka_project.middlewares.AlkotekaProjectDownloaderMiddleware': 543,
 }
