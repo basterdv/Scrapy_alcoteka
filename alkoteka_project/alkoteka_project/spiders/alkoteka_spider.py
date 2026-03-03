@@ -1,9 +1,10 @@
 import time
-import os
-import re
+
 import scrapy
 from scrapy.loader import ItemLoader
+
 from ..items import AlkotekaProjectItem
+from ..url_parser import AlkotekaUrlMapper
 
 
 class AlkotekaSpider(scrapy.Spider):
@@ -12,78 +13,32 @@ class AlkotekaSpider(scrapy.Spider):
     city_uuid = '4a70f9e0-46ae-11e7-83ff-00155d026416'
     base_url = 'https://alkoteka.com'
 
-    # Входные данные
-    # def _load_start_urls(self):
-    #     # Находим путь к папке, где лежит САМ файл паука
-    #     spider_dir = os.path.dirname(os.path.abspath(__file__))
-    #     # Поднимаемся на 2 уровня вверх к корню проекта
-    #     project_root = os.path.dirname(os.path.dirname(spider_dir))
-    #     file_path = os.path.join(project_root, 'url_categories.txt')
-    #
-    #
-    #     if not os.path.exists(file_path):
-    #         self.logger.error("Файл url_categories.txt не найден!")
-    #         return []
-    #
-    #     with open(file_path, 'r') as f:
-    #         content = f.read()
-    #         # Регулярка найдет все ссылки, начинающиеся на http
-    #         urls = re.findall(r'https?://[^\s,]+', content)
-    #         return [url.strip(',') for url in urls]
-    def _load_start_urls(self):
+    async def start(self):
         # Берем имя файла из настроек (по умолчанию 'url_categories.txt')
         filename = self.settings.get('URL_LIST_FILE', 'url_categories.txt')
 
-        # Путь к корню проекта
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        file_path = os.path.join(project_root, filename)
+        api_urls = AlkotekaUrlMapper.load_urls_from_file(filename)
 
-        if not os.path.exists(file_path):
-            self.logger.warning(f"Файл {filename} не найден. Создаю пустой файл.")
-            with open(file_path, 'w', encoding='utf-8') as f:
-                f.write("# Вставьте ссылки на категории Alkoteka ниже\n")
-            return []
-
-        with open(file_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-            # Ищем только строки, похожие на URL, игнорируя комментарии
-            urls = re.findall(r'https?://alkoteka\.com/catalog/[^\s,]+', content)
-
-            clean_urls = []
-            for u in urls:
-                u = u.strip().rstrip(',')
-                # Простейшая валидация: ссылка должна содержать /catalog/
-                if '/catalog/' in u:
-                    clean_urls.append(u)
-
-            self.logger.info(f"Найдено валидных категорий: {len(clean_urls)}")
-            return list(set(clean_urls))  # Убираем дубликаты
-
-    async def start(self):
-        urls = self._load_start_urls()
-
-        if not urls:
+        if not api_urls:
             self.logger.warning("Список URL пуст, парсинг не начнется.")
             return
 
-        for url in urls:
-            # Извлекаем slug категории из URL (последняя часть после /catalog/)
-            cat_slug = url.split('/')[-1]
-            probe_url = f'{self.base_url}/web-api/v1/product?city_uuid={self.city_uuid}&page=1&per_page=4&root_category_slug={cat_slug}'
-
+        for api_url in api_urls:
             yield scrapy.Request(
-                probe_url,
+                api_url,
                 callback=self.parse_total,
-                cb_kwargs={'cat_slug': cat_slug}
+                cb_kwargs={'api_url': api_url}
             )
 
-    def parse_total(self, response, cat_slug):
+    def parse_total(self, response, api_url):
         data = response.json()
         total = data.get('meta', {}).get('total')
 
         # Запрашиваем все товары этой категории одним списком
-        full_api_url = f'{self.base_url}/web-api/v1/product?city_uuid={self.city_uuid}&page=1&per_page={total}&root_category_slug={cat_slug}'
+        category, full_api_url = AlkotekaUrlMapper.update_api_params(api_url, per_page=total)
+        self.logger.info(f"Категория {category} содержит {total} товаров")
 
+        # Переходим на страницу с товарами
         yield scrapy.Request(
             full_api_url,
             callback=self.parse_listing,
@@ -96,10 +51,12 @@ class AlkotekaSpider(scrapy.Spider):
         for p in products:
             slug = p.get('slug')
             product_url = p.get('product_url')
+
             # Запрос в персональное API товара за брендом и описанием
-            detail_api_url = f"{self.base_url}/web-api/v1/product/{slug}?city_uuid={self.city_uuid}"
+            product_api_url = AlkotekaUrlMapper.get_detail_api_url(slug, self.city_uuid)
+
             yield scrapy.Request(
-                detail_api_url,
+                product_api_url,
                 callback=self.parse_product_detail,
                 meta={'product_url': product_url}
             )
@@ -108,6 +65,7 @@ class AlkotekaSpider(scrapy.Spider):
         # Данные из детального API
         product_data = response.json()
         if not product_data.get('success'):
+            self.logger.warning(f"Не удалось получить данные товара, ошибка: {product_data.get('error')}")
             return
 
         item = product_data.get('results', {})
@@ -125,7 +83,6 @@ class AlkotekaSpider(scrapy.Spider):
             'title',
             f"{str(item.get('name'))},{str(item.get('filter_labels')[0]['title'])}"
         )
-
 
         # Бренд
         loader.add_value('brand', blocks)
@@ -145,8 +102,6 @@ class AlkotekaSpider(scrapy.Spider):
             "count": item.get('quantity_total', 0)
         })
 
-
-
         # Изображения (полные ссылки)
         main_img = str(item.get('image_url'))
         # set_imgs = [urljoin("https://alkoteka.com", img) for img in item_api.get('images', [])]
@@ -163,5 +118,3 @@ class AlkotekaSpider(scrapy.Spider):
         loader.add_value('variants', 1)
 
         yield loader.load_item()
-
-
