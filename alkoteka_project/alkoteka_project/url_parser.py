@@ -72,7 +72,7 @@ class AlkotekaUrlMapper:
                     cat_slug = part.replace(cls.CATEGORY_PREFIX, "")
                     params['options[categories][]'] = cat_slug
 
-        # Собираем URL.
+        # Собираем URL API.
         query_string = urlencode(params, safe='[]')
         return f"{cls.BASE_API_URL}/web-api/v1/product?{query_string}"
 
@@ -107,7 +107,7 @@ class AlkotekaUrlMapper:
         # Собираем параметры обратно. Старая часть URL остается неизменной.
         new_query = urlencode(params, doseq=True, safe='[]')
 
-        # Возвращаем обновленный URL
+        # Возвращаем обновленный URL API
         return category,urlunparse(parsed_url._replace(query=new_query))
 
     @classmethod

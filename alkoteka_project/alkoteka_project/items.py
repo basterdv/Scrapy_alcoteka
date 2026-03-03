@@ -1,110 +1,57 @@
 import scrapy
-from itemloaders.processors import TakeFirst, MapCompose, Identity
+import time
+from itemloaders.processors import TakeFirst, MapCompose
 
+def get_timestamp(value):
+    return int(time.time())
 
-def process_metadata(blocks_list):
-    """
-    Выходной процессор.
-    blocks_list придет как [ [block1, block2, ...] ] из-за loader.add_value('metadata', [blocks])
-    """
-    if not blocks_list or not isinstance(blocks_list[0], list):
-        return {}
+def format_title(values, loader_context):
+    """Склеивает название и доп. информацию (объем/цвет)"""
+    item_name = values[0] if values else ""
 
-    blocks = blocks_list[0]
-    metadata = {}
+    labels = loader_context.get('filter_labels', [])
+    extra = next((l.get('title', '') for l in labels if l.get('filter') in ['obem', 'cvet']), '')
+    return f"{item_name}, {extra}".strip(', ')
 
-    for block in blocks:
-        key = block.get('title')
-        block_type = block.get('type')
-        val = ""
-
-        # Логика извлечения значения (как мы делали ранее)
-        if block_type == 'select':
-            v = block.get('values', {})
-            val = v.get('name', '') if isinstance(v, dict) else ""
-        elif block_type == 'range':
-            val = f"{block.get('min')}{block.get('unit', '')}"
-
-        if key and val:
-            metadata[key] = val
-
-    return metadata
-
-
-def extract_brand(block):
-    """Ищет бренд в массиве блоков"""
-    if not isinstance(block, dict):
+def extract_brand(description_blocks):
+    """ Ищет бренд в массиве """
+    if not isinstance(description_blocks, dict):
         return None
 
-    if block.get('code') == 'brend':
-        vals = block.get('values', {})
+    if description_blocks.get('code') == 'brend':
+        vals = description_blocks.get('values', {})
         if isinstance(vals, dict):
             return vals.get('name')
         elif isinstance(vals, list) and len(vals) > 0:
             return vals[0].get('name')
-    return None  # Если это не блок бренда, возвращаем None (Scrapy его отфильтрует)
+    return ''
 
-
-# def format_image_url(url):
-#     return urljoin("https://alkoteka.com", url) if url else None
 
 class AlkotekaProjectItem(scrapy.Item):
-    timestamp = scrapy.Field(output_processor=TakeFirst())  # Дата и время сбора товара в формате timestamp.
-    RPC = scrapy.Field(output_processor=TakeFirst())  # Уникальный код товара.
-    url = scrapy.Field(output_processor=TakeFirst())  # Ссылка на страницу товара.
-    title = scrapy.Field(output_processor=TakeFirst())  # Заголовок/название товара
-    marketing_tags = scrapy.Field()  # Список маркетинговых тэгов
-    brand = scrapy.Field(
+    timestamp = scrapy.Field(                                       # Дата и время сбора товара в формате timestamp.
+        input_processor=MapCompose(get_timestamp),
+        output_processor=TakeFirst())
+    RPC = scrapy.Field(output_processor=TakeFirst())                # Уникальный код товара.
+    url = scrapy.Field(output_processor=TakeFirst())                # Ссылка на страницу товара.
+    title = scrapy.Field(output_processor=format_title)             # Заголовок/название товара
+    marketing_tags = scrapy.Field()                                 # Список маркетинговых тэгов
+    brand = scrapy.Field(                                           # Бренд товара
         input_processor=MapCompose(extract_brand),
         output_processor=TakeFirst())
-    section = scrapy.Field()
-    price_data = scrapy.Field(output_processor=TakeFirst())
-    stock = scrapy.Field(output_processor=TakeFirst()) # Есть товар в наличии в магазине или нет
-    # Если есть возможность получить информацию о количестве оставшегося товара в наличии, иначе 0
-    assets = scrapy.Field(output_processor=TakeFirst()) # Ссылка на основное изображение товара.
-    metadata = scrapy.Field(
-        input_processor=Identity(),  # Передаем список блоков как есть
-        output_processor=process_metadata  # Превращаем список в словарь характеристик
-    )
-    variants = scrapy.Field(output_processor=TakeFirst()) # Кол-во вариантов у товара в карточке
+    section = scrapy.Field()                                        # Иерархия разделов
+    price_data = scrapy.Field(output_processor=TakeFirst())         # "current" Цена со скидкой, если скидки нет то = original.
+                                                                    # "original" Оригинальная цена.
+                                                                    # "sale_tag" Если есть скидка на товар
 
-    # yield {
-    #     'timestamp': int(time.time()),  # Дата и время сбора товара в формате timestamp.
-    #     'RPC': str(item.get('uuid')),  # Уникальный код товара.
-    #     'url': product_url,  # Ссылка на страницу товара.
-    #     'title':  f'{str(item.get('name'))},{str(item.get('filter_labels')[0]['title'])}', # Заголовок/название товара
-    #     'marketing_tags': [],  # Список маркетинговых тэгов
-    #     'brand': str(item.get('description_blocks')[2]['values'][0]['name']),  # Бренд товара
-    #     'section': [  # Иерархия разделов
-    #         item.get('category')['parent']['name'],
-    #         item.get('category')['name']
-    #     ],
-    #     'price_data': {
-    #         # 'current': float(product.get('price')),       # Цена со скидкой, если скидки нет то = original.
-    #         # "original": float(product.get('prev_price')), # Оригинальная цена
-    #         "sale_tag": 'sale_tag'  # Если есть скидка на товар то необходимо вычислить
-    #         # процент скидки и записать формате:
-    #         # "Скидка {discount_percentage}%"
-    #     },
-    #     "stock": {
-    #         # "in_stock": bool((product.get('available'))),  # Есть товар в наличии в магазине или нет
-    #         # "count": (product.get('quantity_total', 0))
-    #         # Если есть возможность получить информацию о количестве оставшегося товара в наличии, иначе 0
-    #     },
-    #     "assets": {
-    #         # "main_image": str(product.get('image_url')),  # Ссылка на основное изображение товара.
-    #         "set_images": [],  # Список ссылок на все изображения товара
-    #         "view360": [],  # Список ссылок на изображения в формате 360.
-    #         "video": []  # Список ссылок на видео/видеообложки товара.
-    #     },
-    #     'metadata': {
-    #         #                 '__description': item.get('description_blocks',  # Описание товара
-    #         #                 "Артикул": item.get('vendor_code'),
-    #         #                 "Код товара": str(),
-    #         #                 "Цвет": str(),
-    #         #                 'Объем': str(),
-    #         #                 'Страна производитель': str(),
-    #     },
-    #     "variants": int()  # Кол-во вариантов у товара в карточке
-    #
-    # }
+    stock = scrapy.Field(output_processor=TakeFirst())              # "in_stock" Есть товар в наличии в магазине или нет.
+                                                                    # "count" информацию о количестве оставшегося товара в наличии, иначе 0.
+
+    assets = scrapy.Field(output_processor=TakeFirst())             # "main_image" Ссылка на основное изображение товара.
+                                                                    # "set_images" Список ссылок на все изображения товара.
+                                                                    # "view360" Список ссылок на изображения в формате 360.
+                                                                    # "video" Список ссылок на видео/видеообложки товара.
+
+    metadata = scrapy.Field(output_processor=TakeFirst())           # Описание товара
+    variants = scrapy.Field(output_processor=TakeFirst())           # Кол-во вариантов у товара в карточке
+
+
