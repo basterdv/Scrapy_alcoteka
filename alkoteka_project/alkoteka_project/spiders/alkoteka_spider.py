@@ -1,5 +1,3 @@
-import time
-
 import scrapy
 from scrapy.loader import ItemLoader
 
@@ -79,17 +77,6 @@ class AlkotekaSpider(scrapy.Spider):
         loader.add_value('url', product_url)
         loader.add_value('title', item_api.get('name'))
 
-        # name = item_api.get('name', '')
-        # # Ищем объем или цвет в метках для добавления в заголовок
-        # extra_meta = ""
-        # for label in item_api.get('filter_labels', []):
-        #     if label.get('filter') in ['obem', 'cvet']:
-        #         extra_meta = label.get('title', '')
-        #         break
-        #
-        # full_title = f"{name}, {extra_meta}".strip(', ')
-        # loader.add_value('title', full_title)
-
         tags = []
         if item_api.get('new'): tags.append('Новинка')
         if item_api.get('enogram'): tags.append('Энограмма')
@@ -146,7 +133,8 @@ class AlkotekaSpider(scrapy.Spider):
 
         for block in description_blocks:
             key = block.get('title')
-            if not key: continue
+            if not key:
+                continue
 
             # Для типа select вытягиваем имена из списка values
             if block.get('type') == 'select':

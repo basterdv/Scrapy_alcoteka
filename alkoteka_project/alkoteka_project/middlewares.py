@@ -64,5 +64,3 @@ class AlkotekaProjectDownloaderMiddleware:
     def spider_opened(self):
         self.crawler.spider.logger.info(f"Proxies loaded: {len(self.proxies)}")
 
-    # def spider_opened(self, spider):
-    #     spider.logger.info(f"Spider {spider.name} opened. Proxies loaded: {len(self.proxies)}")

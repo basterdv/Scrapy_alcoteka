@@ -76,7 +76,6 @@ class AlkotekaUrlMapper:
         query_string = urlencode(params, safe='[]')
         return f"{cls.BASE_API_URL}/web-api/v1/product?{query_string}"
 
-
     @staticmethod
     def update_api_params(api_url, per_page=None, page=None):
         """
@@ -108,10 +107,10 @@ class AlkotekaUrlMapper:
         new_query = urlencode(params, doseq=True, safe='[]')
 
         # Возвращаем обновленный URL API
-        return category,urlunparse(parsed_url._replace(query=new_query))
+        return category, urlunparse(parsed_url._replace(query=new_query))
 
     @classmethod
-    def get_detail_api_url(cls,product_slug, city_uuid=None):
+    def get_detail_api_url(cls, product_slug, city_uuid=None):
         """
         Формирует URL для получения данных конкретного товара по его slug.
         Результат: https://alkoteka.com/web-api/v1/product/eddu-grey-rok_43968?city_uuid=...
@@ -119,6 +118,3 @@ class AlkotekaUrlMapper:
         uuid = city_uuid if city_uuid else cls.CITY_UUID
         # Формируем путь: базовый API + / + slug товара
         return f"{cls.BASE_API_URL}/web-api/v1/product/{product_slug}?city_uuid={uuid}"
-
-
-
